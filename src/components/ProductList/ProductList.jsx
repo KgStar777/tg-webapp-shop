@@ -1,85 +1,125 @@
-import React, {useState} from 'react';
-import './ProductList.css';
+import React, { useState, useCallback, useEffect, useMemo } from "react";
 import ProductItem from "../ProductItem/ProductItem";
-import {useTelegram} from "../../hooks/useTelegram";
-import {useCallback, useEffect} from "react";
+import { useTelegram } from "../../hooks/useTelegram";
+import FilterPanel from "../FilterPanel/FilterPanel"
+import data from "../../db/data";
 
-const products = [
-    {id: '1', title: 'Джинсы', price: 5000, description: 'Синего цвета, прямые'},
-    {id: '2', title: 'Куртка', price: 12000, description: 'Зеленого цвета, теплая'},
-    {id: '3', title: 'Джинсы 2', price: 5000, description: 'Синего цвета, прямые'},
-    {id: '4', title: 'Куртка 8', price: 122, description: 'Зеленого цвета, теплая'},
-    {id: '5', title: 'Джинсы 3', price: 5000, description: 'Синего цвета, прямые'},
-    {id: '6', title: 'Куртка 7', price: 600, description: 'Зеленого цвета, теплая'},
-    {id: '7', title: 'Джинсы 4', price: 5500, description: 'Синего цвета, прямые'},
-    {id: '8', title: 'Куртка 5', price: 12000, description: 'Зеленого цвета, теплая'},
-]
+import "./ProductList.css";
 
-const getTotalPrice = (items = []) => {
-    return items.reduce((acc, item) => {
-        return acc += item.price
-    }, 0)
+function filterData(data, filter) {
+  // Копируем исходные данные, чтобы не изменять их
+  let filteredData = [...data];
+
+  // Фильтрация по категории
+  if (filter.category.length > 0) {
+    filteredData = filteredData.filter(item => filter.category.some(category => category.value === item.category));
+  }
+
+  // Фильтрация по цене
+  // if (filter.price.length > 0) {
+  //   filteredData = filteredData.filter(item => {
+  //     // Здесь предполагается, что в вашем фильтре цены указаны минимальная и максимальная цены
+  //     return item.price >= filter.price[0] && item.price <= filter.price[1];
+  //   });
+  // }
+
+  // Фильтрация по цвету
+  if (filter.colors.length > 0) {
+    filteredData = filteredData.filter(item => filter.colors.some(color => color.value === item.color));
+  }
+
+  return filteredData;
 }
 
+const getTotalPrice = (items = []) => {
+  return items.reduce((acc, item) => {
+    console.log("items:", items)
+    console.log("acc:", acc)
+    return (acc += Number(item.price));
+  }, 0);
+};
+
 const ProductList = () => {
-    const [addedItems, setAddedItems] = useState([]);
-    const {tg, queryId} = useTelegram();
+  const [addedItems, setAddedItems] = useState([]);
+  const [filter, setFilter] = useState({
+    category: [],
+    // price: [],
+    colors: [],
+  });
 
-    const onSendData = useCallback(() => {
-        const data = {
-            products: addedItems,
-            totalPrice: getTotalPrice(addedItems),
-            queryId,
-        }
-        fetch('http://85.119.146.179:8000/web-data', {
-            method: 'POST',
-            headers: {
-                'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(data)
-        })
-    }, [addedItems])
+  console.log("filter: ", filter);
 
-    useEffect(() => {
-        tg.onEvent('mainButtonClicked', onSendData)
-        return () => {
-            tg.offEvent('mainButtonClicked', onSendData)
-        }
-    }, [onSendData])
+  const { tg, queryId } = useTelegram();
 
-    const onAdd = (product) => {
-        const alreadyAdded = addedItems.find(item => item.id === product.id);
-        let newItems = [];
+  const onSendData = useCallback(() => {
+    const data = {
+      products: addedItems,
+      totalPrice: getTotalPrice(addedItems),
+      queryId,
+    };
+    fetch("http://localhost:8000/web-data", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify(data),
+    });
+  }, [addedItems]);
 
-        if(alreadyAdded) {
-            newItems = addedItems.filter(item => item.id !== product.id);
-        } else {
-            newItems = [...addedItems, product];
-        }
+  useEffect(() => {
+    tg.onEvent("mainButtonClicked", onSendData);
+    return () => {
+      tg.offEvent("mainButtonClicked", onSendData);
+    };
+  }, [onSendData]);
 
-        setAddedItems(newItems)
+  const onAdd = useCallback((product) => {
+    const alreadyAdded = addedItems.find((item) => item.id === product.id);
+    let newItems = [];
 
-        if(newItems.length === 0) {
-            tg.MainButton.hide();
-        } else {
-            tg.MainButton.show();
-            tg.MainButton.setParams({
-                text: `Купить ${getTotalPrice(newItems)}`
-            })
-        }
+    if (alreadyAdded) {
+      newItems = addedItems.filter((item) => item.id !== product.id);
+    } else {
+      newItems = [...addedItems, product];
     }
 
-    return (
-        <div className={'list'}>
-            {products.map(item => (
-                <ProductItem
-                    product={item}
-                    onAdd={onAdd}
-                    className={'item'}
-                />
-            ))}
-        </div>
-    );
+    setAddedItems(newItems);
+
+    if (newItems.length === 0) {
+      tg.MainButton.hide();
+    } else {
+      tg.MainButton.show();
+      tg.MainButton.setParams({
+        text: `Купить ${getTotalPrice(newItems)}`,
+      });
+    }
+  }, [addedItems]);
+
+  const onFilterChange = (type, value) => {
+    setFilter((prev) => {
+      return ({
+        ...prev, 
+        [type]: [...value],
+      })
+    });
+  }
+
+  const filteredData = filterData(data, filter);
+
+  return (
+    <div className="page">
+      <FilterPanel filter={filter} onChange={onFilterChange} />
+      <div className="list">
+        {filteredData.map((product, idx) => (
+          <ProductItem
+            key={idx}
+            product={product}
+            onAdd={onAdd}
+          />
+        ))}
+      </div>
+    </div>
+  );
 };
 
 export default ProductList;
